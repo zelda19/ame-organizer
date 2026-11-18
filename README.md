@@ -40,11 +40,14 @@ Destinations are under your home folder, **not inside Downloads**.
 |---|---|
 | Documents with `resume` or standalone `cv` in the name | `~/Documents/jobs/` |
 | Pictures with `screenshot` anywhere in the name | `~/Pictures/Screenshots/` |
-| Other supported documents / pictures | `~/Documents/` / `~/Pictures/` |
+| Pictures with `wallpaper` anywhere in the name | `~/Pictures/Wallpapers/` |
+| Other supported pictures, even with random names | `~/Pictures/Photos/` |
+| Other supported documents | `~/Documents/` |
 | Supported audio / videos | `~/Music/` / `~/Videos/` |
 | Archives, apps, and unknown file types | Left alone |
 
 Names are matched without regard to capitalization. Routing uses filenames and extensions—not what the document says.
+If a picture name contains both `screenshot` and `wallpaper`, Screenshots wins. Missing destination folders are created only when moving files.
 
 ## Before you move files
 

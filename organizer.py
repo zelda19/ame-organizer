@@ -47,8 +47,13 @@ def plan_moves(folder, home=None):
             "resume" in name or re.search(r"(?<![a-z0-9])cv(?![a-z0-9])", name)
         ):
             target_dir /= "jobs"
-        elif category == "Pictures" and "screenshot" in name:
-            target_dir /= "Screenshots"
+        elif category == "Pictures":
+            if "screenshot" in name:
+                target_dir /= "Screenshots"
+            elif "wallpaper" in name:
+                target_dir /= "Wallpapers"
+            else:
+                target_dir /= "Photos"
         check_directory(target_dir)
         if source.parent == target_dir:
             continue

@@ -37,7 +37,7 @@ class OrganizerTests(unittest.TestCase):
         self.assertEqual(destinations, {
             "ame_resume.pdf": "Documents/jobs/ame_resume.pdf",
             "notes.txt": "Documents/notes.txt",
-            "photo.JPG": "Pictures/photo.JPG",
+            "photo.JPG": "Pictures/Photos/photo.JPG",
             "report (1).pdf": "Documents/report (1).pdf",
             "report.pdf": "Documents/report (2).pdf",
         })
@@ -114,7 +114,13 @@ class OrganizerTests(unittest.TestCase):
             "2026_screenshot_edit.png": "Pictures/Screenshots",
             "2026_11_15_16_15_02_screenshot.png": "Pictures/Screenshots",
             "2026_SCREENSHOT.JPG": "Pictures/Screenshots",
-            "ordinary_photo.png": "Pictures",
+            "nature_wallpaper.png": "Pictures/Wallpapers",
+            "WALLPAPER_2026.JPG": "Pictures/Wallpapers",
+            "wallpaper_screenshot.png": "Pictures/Screenshots",
+            "ordinary_photo.png": "Pictures/Photos",
+            "IMG_9382.jpg": "Pictures/Photos",
+            "a8f29.png": "Pictures/Photos",
+            "wallpaper.pdf": "Documents",
             "AME-CV.pdf": "Documents/jobs",
             "my_cv.pdf": "Documents/jobs",
             "activity.pdf": "Documents",
