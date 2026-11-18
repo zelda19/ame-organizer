@@ -1,7 +1,7 @@
 # ame-organizer
 
 **Your Downloads folder isn’t a filing system.**
-[!imgalt](https://github.com/zelda19/ame-organizer/blob/main/assets/ame-organizer.png)
+![imgalt](https://github.com/zelda19/ame-organizer/blob/main/assets/ame-organizer.png)
 
 Preview the cleanup. Keep both copies. Move files only when you say so.
 
