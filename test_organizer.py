@@ -1,12 +1,13 @@
 import os
+import sqlite3
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
-from organizer import apply_moves, plan_moves, undo_cleanup
+from organizer import apply_moves, open_history, plan_moves, undo_cleanup
 
 
 class OrganizerTests(unittest.TestCase):
@@ -429,6 +430,54 @@ class OrganizerTests(unittest.TestCase):
         self.assertIn("Unsafe history file", result.stderr)
         self.assertEqual(target.read_text(), "keep me")
         self.assertEqual(len(plan_moves(self.folder, self.home)), 5)
+
+    def test_history_setup_failure_closes_connection(self):
+        for boundary in ("execute", "commit"):
+            for error in (sqlite3.OperationalError("injected failure"), KeyboardInterrupt()):
+                with self.subTest(boundary=boundary, error=type(error).__name__):
+                    connection = sqlite3.connect(":memory:")
+                    self.addCleanup(connection.close)
+                    wrapped = Mock(wraps=connection)
+                    getattr(wrapped, boundary).side_effect = error
+                    with patch("organizer.sqlite3.connect", return_value=wrapped):
+                        with self.assertRaises(type(error)):
+                            open_history(self.home / "history.sqlite3")
+                    with self.assertRaises(sqlite3.ProgrammingError):
+                        connection.execute("SELECT 1")
+
+    def test_apply_keeps_both_names_if_linked_contents_change(self):
+        source, destination = plan_moves(self.folder, self.home)[0]
+        link = os.link
+
+        def link_then_edit(*args, **kwargs):
+            link(*args, **kwargs)
+            info = destination.stat()
+            destination.write_text("edited")
+            os.utime(destination, ns=(info.st_atime_ns, info.st_mtime_ns))
+
+        with patch("organizer.os.link", side_effect=link_then_edit):
+            with self.assertRaisesRegex(ValueError, "File changed while moving"):
+                apply_moves([(source, destination)], self.home)
+        self.assertEqual(source.read_text(), "edited")
+        self.assertEqual(destination.read_text(), "edited")
+
+    def test_apply_does_not_unlink_replacement_source_with_same_contents(self):
+        source, destination = plan_moves(self.folder, self.home)[0]
+        link = os.link
+
+        def link_then_replace(*args, **kwargs):
+            link(*args, **kwargs)
+            info = source.stat()
+            source.rename(self.home / "saved-original.pdf")
+            source.write_text("resume")
+            os.utime(source, ns=(info.st_atime_ns, info.st_mtime_ns))
+
+        with patch("organizer.os.link", side_effect=link_then_replace):
+            with self.assertRaisesRegex(ValueError, "File changed while moving"):
+                apply_moves([(source, destination)], self.home)
+        self.assertEqual(source.read_text(), "resume")
+        self.assertEqual(destination.read_text(), "resume")
+        self.assertFalse(source.samefile(destination))
 
 
 if __name__ == "__main__":

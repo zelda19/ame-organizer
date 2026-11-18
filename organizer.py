@@ -89,22 +89,26 @@ def open_history(path):
         raise ValueError(f"Unsafe history file: {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     history = sqlite3.connect(path)
-    history.row_factory = sqlite3.Row
-    history.execute("""
-        CREATE TABLE IF NOT EXISTS moves (
-            id INTEGER PRIMARY KEY,
-            batch TEXT NOT NULL,
-            source TEXT NOT NULL,
-            destination TEXT NOT NULL,
-            device INTEGER NOT NULL,
-            inode INTEGER NOT NULL,
-            size INTEGER NOT NULL,
-            mtime INTEGER NOT NULL,
-            digest TEXT NOT NULL,
-            state TEXT NOT NULL
-        )
-    """)
-    history.commit()
+    try:
+        history.row_factory = sqlite3.Row
+        history.execute("""
+            CREATE TABLE IF NOT EXISTS moves (
+                id INTEGER PRIMARY KEY,
+                batch TEXT NOT NULL,
+                source TEXT NOT NULL,
+                destination TEXT NOT NULL,
+                device INTEGER NOT NULL,
+                inode INTEGER NOT NULL,
+                size INTEGER NOT NULL,
+                mtime INTEGER NOT NULL,
+                digest TEXT NOT NULL,
+                state TEXT NOT NULL
+            )
+        """)
+        history.commit()
+    except BaseException:
+        history.close()
+        raise
     return history
 
 
@@ -133,7 +137,11 @@ def apply_moves(moves, home=None):
                 history.execute("UPDATE moves SET state = 'failed' WHERE id = ?", (entry,))
                 history.commit()
                 raise
-            if file_signature(destination) != signature or file_signature(source) != signature:
+            destination_signature = file_signature(destination)
+            # Both names share content; check the source identity without hashing it again.
+            info = source.lstat()
+            source_metadata = (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
+            if destination_signature != signature or source_metadata != signature[:4]:
                 raise ValueError(f"File changed while moving; both names kept: {source}")
             source.unlink()
             history.execute("UPDATE moves SET state = 'moved' WHERE id = ?", (entry,))
