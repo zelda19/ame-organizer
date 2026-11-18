@@ -71,6 +71,37 @@ If you want to move everything in the preview without individual questions:
 python3 organizer.py ~/Downloads --apply
 ```
 
+## Undo the last cleanup
+
+```bash
+python3 organizer.py --undo
+```
+
+If you already have the local `ame-organizer` command installed, use `ame-organizer --undo`.
+
+Undo works from any current directory. You can also keep a folder argument:
+
+```bash
+python3 organizer.py ~/Downloads --undo
+```
+
+Both forms undo the **last recorded cleanup**, not a cleanup filtered by folder. Any folder argument is ignored, even if that folder no longer exists. The restore preview shows exactly which original paths will be used.
+
+```text
+Restore: /home/you/Documents/jobs/resume.pdf -> /home/you/Downloads/resume.pdf
+Undo this cleanup? [y/N]: y
+Restored: /home/you/Downloads/resume.pdf
+Undone: 1 file(s).
+```
+
+Type `y` or `yes` to restore the latest cleanup that has not been undone. Any other answer, Enter, Ctrl+C at the prompt, or end-of-input cancels. Do not combine `--undo` with `--apply` or `--select`.
+
+- **Future cleanups only.** Moves made before this feature was installed have no history and cannot be undone.
+- **No overwrites.** Undo checks every recorded file before starting. It refuses occupied original paths and moved files that are missing, changed, replaced, or symbolic links. Clear the conflict yourself, then retry.
+- **Partial cleanups are recorded.** If a move or undo stops midway, completed steps stay completed. Run `--undo` again to recover the latest remaining recorded steps. Empty cleanups, cancelled selections, and previews do not replace previous history.
+- **Local history, not a backup.** Paths, file identity, modification time, size, and a SHA-256 fingerprint are stored in `~/.local/state/ame-organizer/history.sqlite3`. File contents are not stored or uploaded. Removing the history loses undo; it cannot recover deleted file contents.
+- **Files are checked, not guessed.** Hashing reads each moved file, which adds work for large files. Empty destination folders remain after undo.
+
 ## Where files go
 
 Filename matching is case-insensitive. Special rules apply only within their matching file type.
@@ -90,7 +121,7 @@ Supported extensions:
 - **Audio:** `.mp3`, `.wav`, `.flac`
 - **Videos:** `.mp4`, `.mkv`, `.mov`
 
-For example, `my_cv.pdf` matches the jobs rule; `activity.pdf` does not. A resume called `document123.pdf` goes to ordinary Documents: the tool reads names, not contents.
+For example, `my_cv.pdf` matches the jobs rule; `activity.pdf` does not. A resume called `document123.pdf` goes to ordinary Documents: routing uses names, not contents. File contents are read only to fingerprint moves for safe undo.
 
 ## Safety and limits
 
@@ -98,7 +129,7 @@ For example, `my_cv.pdf` matches the jobs rule; `activity.pdf` does not. A resum
 - **Duplicates get numbered.** Existing and already-planned filenames are reserved. A collision appearing during apply stops the operation instead of overwriting.
 - **No recursive cleanup.** Subfolders, hidden files, and symbolic links are skipped. Destination directories and their ancestors must not be symbolic links.
 - **Same filesystem only.** Moves use a hard link followed by removing the source name. Cross-filesystem moves and filesystems without hard links are unsupported.
-- **No rollback or background monitoring.** If apply fails, earlier moves stay completed. An interruption between linking and unlinking may leave both names. Do not reorganize the same files concurrently.
+- **No automatic rollback or background monitoring.** If apply fails, earlier moves stay completed; use `--undo` to recover recorded moves. An interruption between linking and unlinking may leave both names; undo recognizes that state. Do not run cleanups or undo concurrently, or edit the same files while they run. Real power-loss recovery is not verified.
 
 Each run builds a fresh plan; a later apply can differ from an earlier preview if files have changed.
 
@@ -108,10 +139,10 @@ Each run builds a fresh plan; a later apply can differ from an earlier preview i
 python3 -m unittest -v
 ```
 
-Tests use temporary home and Downloads folders, not your real files. They cover routing, duplicate reservations, preview, apply, selection, cancellation, invalid input, changed destinations, symlinks, and skipped files.
+Tests use temporary home and Downloads folders, not your real files. They cover routing, duplicate reservations, preview, apply, selection, cancellation, invalid input, undo, partial cleanups, simulated interruptions, changed or missing files, unsafe history, symlinks, and skipped files.
 
 ## Small on purpose
 
-`organizer.py` contains the routing, preview, and apply logic. `test_organizer.py` checks those behaviors using Python’s standard library.
+`organizer.py` contains the routing, preview, apply, SQLite move history, and undo logic. `test_organizer.py` checks those behaviors using Python’s standard library.
 
 Routing rules live in the script. No configuration framework, content scanning, or mascot required.

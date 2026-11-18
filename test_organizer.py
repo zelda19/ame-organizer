@@ -4,8 +4,9 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
-from organizer import apply_moves, plan_moves
+from organizer import apply_moves, plan_moves, undo_cleanup
 
 
 class OrganizerTests(unittest.TestCase):
@@ -87,7 +88,7 @@ class OrganizerTests(unittest.TestCase):
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_text("arrived after preview")
         with self.assertRaises(FileExistsError):
-            apply_moves([(source, destination)])
+            apply_moves([(source, destination)], self.home)
         self.assertEqual(source.read_text(), self.samples[source.name])
         self.assertEqual(destination.read_text(), "arrived after preview")
 
@@ -95,7 +96,7 @@ class OrganizerTests(unittest.TestCase):
         moves = plan_moves(self.folder, self.home)
         (self.home / "Documents/jobs").symlink_to(self.folder)
         with self.assertRaisesRegex(ValueError, "Unsafe destination"):
-            apply_moves(moves)
+            apply_moves(moves, self.home)
         self.assertTrue((self.folder / "ame_resume.pdf").exists())
 
     def test_invalid_folder_command(self):
@@ -140,7 +141,7 @@ class OrganizerTests(unittest.TestCase):
         (self.home / "Pictures").symlink_to(self.home / "Documents")
         with self.assertRaisesRegex(ValueError, "Unsafe destination"):
             apply_moves([(self.folder / "photo.JPG",
-                          self.home / "Pictures/Screenshots/photo.JPG")])
+                          self.home / "Pictures/Screenshots/photo.JPG")], self.home)
         self.assertTrue((self.folder / "photo.JPG").exists())
 
     def test_already_in_destination_stays_put(self):
@@ -223,6 +224,205 @@ class OrganizerTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("No files to organize.", result.stdout)
         self.assertNotIn("Move this file?", result.stdout)
+
+    def run_command(self, *args, answer="", cwd=None):
+        return subprocess.run(
+            [sys.executable, str(Path(__file__).with_name("organizer.py")), *args],
+            input=answer, capture_output=True, text=True, env=self.env, cwd=cwd,
+        )
+
+    def test_undo_restores_last_cleanup_without_touching_existing_files(self):
+        applied = self.run_command(str(self.folder), "--apply")
+        self.assertEqual(applied.returncode, 0, applied.stderr)
+        undone = self.run_command("--undo", answer="y\n")
+        self.assertEqual(undone.returncode, 0, undone.stderr)
+        self.assertIn("Undo this cleanup? [y/N]:", undone.stdout)
+        self.assertIn("Undone: 5 file(s).", undone.stdout)
+        for name, content in self.samples.items():
+            self.assertEqual((self.folder / name).read_text(), content)
+        self.assertEqual(
+            (self.home / "Documents/report.pdf").read_text(), "original report"
+        )
+        self.assertEqual(len(plan_moves(self.folder, self.home)), 5)
+        again = self.run_command("--undo", answer="y\n")
+        self.assertIn("No cleanup to undo.", again.stdout)
+
+    def test_undo_without_history_does_not_create_history(self):
+        result = self.run_command("--undo")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("No cleanup to undo.", result.stdout)
+        self.assertFalse((self.home / ".local").exists())
+
+    def test_undo_cancel_keeps_files_and_history_available(self):
+        moves = plan_moves(self.folder, self.home)
+        self.assertEqual(self.run_command(str(self.folder), "--apply").returncode, 0)
+        for answer in ("n\n", "\n", "", "invalid\n"):
+            result = self.run_command("--undo", answer=answer)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("Cancelled. Nothing changed.", result.stdout)
+            for source, destination in moves:
+                self.assertFalse(source.exists())
+                self.assertEqual(destination.read_text(), self.samples[source.name])
+        self.assertEqual(self.run_command("--undo", answer="yes\n").returncode, 0)
+        self.assertTrue((self.folder / "ame_resume.pdf").exists())
+
+    def test_undo_refuses_existing_original_without_restoring_other_files(self):
+        moves = plan_moves(self.folder, self.home)
+        self.assertEqual(self.run_command(str(self.folder), "--apply").returncode, 0)
+        source = self.folder / "ame_resume.pdf"
+        source.write_text("new download")
+        result = self.run_command("--undo", answer="y\n")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("original path is occupied", result.stderr)
+        self.assertEqual(source.read_text(), "new download")
+        for _, destination in moves:
+            self.assertTrue(destination.exists())
+        self.assertFalse((self.folder / "notes.txt").exists())
+
+    def test_undo_refuses_changed_moved_file_before_restoring_anything(self):
+        moves = plan_moves(self.folder, self.home)
+        self.assertEqual(self.run_command(str(self.folder), "--apply").returncode, 0)
+        destination = self.home / "Documents/jobs/ame_resume.pdf"
+        destination.write_text("edited resume")
+        result = self.run_command("--undo", answer="y\n")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("changed or was replaced", result.stderr)
+        self.assertEqual(destination.read_text(), "edited resume")
+        for source, target in moves:
+            self.assertFalse(source.exists())
+            self.assertTrue(target.exists())
+
+    def test_undo_refuses_replacement_even_with_identical_contents(self):
+        self.assertEqual(self.run_command(str(self.folder), "--apply").returncode, 0)
+        destination = self.home / "Documents/jobs/ame_resume.pdf"
+        destination.rename(self.home / "saved-resume.pdf")
+        destination.write_text("resume")
+        result = self.run_command("--undo", answer="y\n")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("changed or was replaced", result.stderr)
+        self.assertTrue(destination.exists())
+        self.assertFalse((self.folder / "ame_resume.pdf").exists())
+
+    def test_undo_refuses_missing_moved_file(self):
+        self.assertEqual(self.run_command(str(self.folder), "--apply").returncode, 0)
+        (self.home / "Documents/jobs/ame_resume.pdf").rename(self.home / "saved-resume.pdf")
+        result = self.run_command("--undo", answer="y\n")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("moved file is missing", result.stderr)
+        self.assertFalse((self.folder / "notes.txt").exists())
+
+    def test_undo_refuses_symlinked_original_directory(self):
+        self.assertEqual(self.run_command(str(self.folder), "--apply").returncode, 0)
+        self.folder.rename(self.home / "old-downloads")
+        self.folder.symlink_to(self.home / "Documents")
+        result = self.run_command("--undo", answer="y\n")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Unsafe destination directory", result.stderr)
+        self.assertTrue((self.home / "Documents/jobs/ame_resume.pdf").exists())
+
+    def test_undo_recovers_successes_from_partial_cleanup(self):
+        moves = plan_moves(self.folder, self.home)
+        (self.home / "Documents/notes.txt").write_text("arrived after preview")
+        with self.assertRaises(FileExistsError):
+            apply_moves(moves, self.home)
+        self.assertFalse((self.folder / "ame_resume.pdf").exists())
+        result = self.run_command("--undo", answer="y\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Undone: 1 file(s).", result.stdout)
+        self.assertEqual((self.folder / "ame_resume.pdf").read_text(), "resume")
+        self.assertEqual(
+            (self.home / "Documents/notes.txt").read_text(), "arrived after preview"
+        )
+
+    def test_undo_affects_only_latest_cleanup_and_noop_does_not_replace_it(self):
+        first = self.run_command(str(self.folder), "--select", answer="y\nn\nn\nn\nn\n")
+        self.assertEqual(first.returncode, 0, first.stderr)
+        second = self.run_command(str(self.folder), "--select", answer="n\ny\nn\nn\n")
+        self.assertEqual(second.returncode, 0, second.stderr)
+        skipped = self.run_command(str(self.folder), "--select", answer="\n\n\n")
+        self.assertEqual(skipped.returncode, 0, skipped.stderr)
+        result = self.run_command("--undo", answer="y\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Undone: 1 file(s).", result.stdout)
+        self.assertEqual((self.folder / "photo.JPG").read_text(), "photo")
+        self.assertFalse((self.folder / "ame_resume.pdf").exists())
+        self.assertTrue((self.home / "Documents/jobs/ame_resume.pdf").exists())
+
+    def test_undo_rejects_other_modes(self):
+        for args in (("--undo", "--apply"), ("--undo", "--select")):
+            result = self.run_command(*args, answer="y\n")
+            self.assertEqual(result.returncode, 2)
+            self.assertEqual(len(plan_moves(self.folder, self.home)), 5)
+
+    def test_undo_accepts_optional_folder_from_any_working_directory(self):
+        elsewhere = self.home / "elsewhere"
+        elsewhere.mkdir()
+        marker = elsewhere / "keep.txt"
+        marker.write_text("untouched")
+        for args in ((str(self.folder), "--undo"),
+                     ("--undo", str(elsewhere)),
+                     (str(self.home / "missing"), "--undo"),
+                     ("--undo",)):
+            with self.subTest(args=args):
+                applied = self.run_command(str(self.folder), "--apply")
+                self.assertEqual(applied.returncode, 0, applied.stderr)
+                result = self.run_command(*args, answer="y\n", cwd=elsewhere)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("Undone: 5 file(s).", result.stdout)
+                if len(args) > 1:
+                    self.assertIn("folder argument is ignored", result.stdout)
+                for name, content in self.samples.items():
+                    self.assertEqual((self.folder / name).read_text(), content)
+                self.assertEqual(marker.read_text(), "untouched")
+
+    def test_undo_recovers_move_interrupted_before_or_after_link(self):
+        move = plan_moves(self.folder, self.home)[0]
+        # Inject filesystem failures at the two boundaries around link/unlink.
+        for boundary in ("organizer.os.link", "organizer.Path.unlink"):
+            with self.subTest(boundary=boundary):
+                with patch(boundary, side_effect=KeyboardInterrupt):
+                    with self.assertRaises(KeyboardInterrupt):
+                        apply_moves([move], self.home)
+                result = self.run_command("--undo", answer="y\n")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(move[0].read_text(), "resume")
+                self.assertFalse(move[1].exists())
+
+    def test_undo_can_resume_after_interruption_between_link_and_unlink(self):
+        source, destination = plan_moves(self.folder, self.home)[0]
+        apply_moves([(source, destination)], self.home)
+        with patch("organizer.Path.home", return_value=self.home):
+            with patch("builtins.input", return_value="y"):
+                with patch("organizer.Path.unlink", side_effect=KeyboardInterrupt):
+                    with self.assertRaises(KeyboardInterrupt):
+                        undo_cleanup()
+        self.assertTrue(source.exists())
+        self.assertTrue(destination.exists())
+        result = self.run_command("--undo", answer="y\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(source.read_text(), "resume")
+        self.assertFalse(destination.exists())
+
+    def test_corrupt_history_stops_apply_without_moving_files(self):
+        history = self.home / ".local/state/ame-organizer/history.sqlite3"
+        history.parent.mkdir(parents=True)
+        history.write_bytes(b"not a sqlite database")
+        result = self.run_command(str(self.folder), "--apply")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("database", result.stderr)
+        self.assertEqual(len(plan_moves(self.folder, self.home)), 5)
+
+    def test_symlinked_history_is_rejected_without_changing_target(self):
+        history = self.home / ".local/state/ame-organizer/history.sqlite3"
+        history.parent.mkdir(parents=True)
+        target = self.home / "unrelated.txt"
+        target.write_text("keep me")
+        history.symlink_to(target)
+        result = self.run_command(str(self.folder), "--apply")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Unsafe history file", result.stderr)
+        self.assertEqual(target.read_text(), "keep me")
+        self.assertEqual(len(plan_moves(self.folder, self.home)), 5)
 
 
 if __name__ == "__main__":

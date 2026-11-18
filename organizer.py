@@ -1,8 +1,12 @@
-"""Organize files by type: preview by default, move only with --apply."""
+"""Organize files by type: preview, select, apply, or undo a recorded cleanup."""
 
 import argparse
+from contextlib import closing
+import hashlib
 import os
 import re
+import sqlite3
+import uuid
 from pathlib import Path
 
 
@@ -58,25 +62,164 @@ def plan_moves(folder, home=None):
     return moves
 
 
-def apply_moves(moves):
-    for source, destination in moves:
-        if source.is_symlink() or not source.is_file():
-            raise ValueError(f"Source is no longer a regular file: {source}")
+def file_signature(path):
+    if path.is_symlink() or not path.is_file():
+        raise ValueError(f"Missing or unsafe file: {path}")
+    with path.open("rb") as file:
+        info = os.fstat(file.fileno())
+        digest = hashlib.sha256()
+        for chunk in iter(lambda: file.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, digest.hexdigest())
+
+
+def history_path(home=None):
+    home = Path.home() if home is None else home
+    return home / ".local/state/ame-organizer/history.sqlite3"
+
+
+def open_history(path):
+    check_directory(path.parent)
+    if path.is_symlink():
+        raise ValueError(f"Unsafe history file: {path}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    history = sqlite3.connect(path)
+    history.row_factory = sqlite3.Row
+    history.execute("""
+        CREATE TABLE IF NOT EXISTS moves (
+            id INTEGER PRIMARY KEY,
+            batch TEXT NOT NULL,
+            source TEXT NOT NULL,
+            destination TEXT NOT NULL,
+            device INTEGER NOT NULL,
+            inode INTEGER NOT NULL,
+            size INTEGER NOT NULL,
+            mtime INTEGER NOT NULL,
+            digest TEXT NOT NULL,
+            state TEXT NOT NULL
+        )
+    """)
+    history.commit()
+    return history
+
+
+def apply_moves(moves, home=None):
+    if not moves:
+        return
+    batch = uuid.uuid4().hex
+    with closing(open_history(history_path(home))) as history:
+        for source, destination in moves:
+            source, destination = source.absolute(), destination.absolute()
+            check_directory(source.parent)
+            signature = file_signature(source)
+            check_directory(destination.parent)
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            entry = history.execute(
+                """INSERT INTO moves
+                   (batch, source, destination, device, inode, size, mtime, digest, state)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')""",
+                (batch, str(source), str(destination), *signature),
+            ).lastrowid
+            # Save intent before changing files, so interrupted moves are recoverable.
+            history.commit()
+            try:
+                os.link(source, destination, follow_symlinks=False)
+            except OSError:
+                history.execute("UPDATE moves SET state = 'failed' WHERE id = ?", (entry,))
+                history.commit()
+                raise
+            if file_signature(destination) != signature or file_signature(source) != signature:
+                raise ValueError(f"File changed while moving; both names kept: {source}")
+            source.unlink()
+            history.execute("UPDATE moves SET state = 'moved' WHERE id = ?", (entry,))
+            history.commit()
+            print(f"Moved: {source.name} -> {destination}")
+
+
+def undo_plan(entries):
+    plan = []
+    for entry in entries:
+        source, destination = Path(entry["source"]), Path(entry["destination"])
+        if not source.is_absolute() or not destination.is_absolute() or source == destination:
+            raise ValueError("Invalid paths in cleanup history.")
+        check_directory(source.parent)
         check_directory(destination.parent)
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        os.link(source, destination, follow_symlinks=False)
-        source.unlink()
-        print(f"Moved: {source.name} -> {destination}")
+        expected = tuple(entry[key] for key in ("device", "inode", "size", "mtime", "digest"))
+        if source.exists() or source.is_symlink():
+            if file_signature(source) != expected:
+                raise ValueError(f"Cannot undo: original path is occupied: {source}")
+            action = "remove_extra_link"
+        else:
+            action = "restore"
+        if destination.exists() or destination.is_symlink():
+            if file_signature(destination) != expected:
+                raise ValueError(f"Cannot undo: moved file changed or was replaced: {destination}")
+        elif action == "remove_extra_link":
+            action = "already_restored"
+        else:
+            raise ValueError(f"Cannot undo: moved file is missing: {destination}")
+        plan.append((entry["id"], source, destination, action))
+    return plan
+
+
+def undo_cleanup():
+    path = history_path()
+    check_directory(path.parent)
+    if not path.exists() and not path.is_symlink():
+        print("No cleanup to undo.")
+        return
+    with closing(open_history(path)) as history:
+        latest = history.execute(
+            "SELECT batch FROM moves WHERE state IN ('pending', 'moved') ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if latest is None:
+            print("No cleanup to undo.")
+            return
+        entries = history.execute(
+            """SELECT * FROM moves WHERE batch = ? AND state IN ('pending', 'moved')
+               ORDER BY id DESC""", (latest["batch"],)
+        ).fetchall()
+        plan = undo_plan(entries)
+        for _, source, destination, _ in plan:
+            print(f"Restore: {destination} -> {source}")
+        try:
+            answer = input("Undo this cleanup? [y/N]: ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            answer = ""
+        if answer not in ("y", "yes"):
+            print("Cancelled. Nothing changed.")
+            return
+        # Recheck after confirmation; every entry must be safe before restoration starts.
+        undo_plan(entries)
+        for entry in entries:
+            entry_id, source, destination, action = undo_plan([entry])[0]
+            if action == "restore":
+                source.parent.mkdir(parents=True, exist_ok=True)
+                os.link(destination, source, follow_symlinks=False)
+            if action != "already_restored":
+                destination.unlink()
+            history.execute("UPDATE moves SET state = 'undone' WHERE id = ?", (entry_id,))
+            history.commit()
+            print(f"Restored: {source}")
+        print(f"Undone: {len(entries)} file(s).")
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("folder", type=Path, help="Source folder; sort into home folders (not recursive)")
+    parser.add_argument("folder", nargs="?", type=Path, help="Source folder (not recursive); optional and ignored with --undo")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--apply", action="store_true", help="Move all matched files")
     mode.add_argument("--select", action="store_true", help="Approve each file with y/n before moving")
+    mode.add_argument("--undo", action="store_true", help="Confirm and undo the last recorded cleanup, regardless of folder")
     args = parser.parse_args()
+    if not args.undo and args.folder is None:
+        parser.error("a source folder is required unless using --undo")
     try:
+        if args.undo:
+            if args.folder is not None:
+                print("Undo uses the last recorded cleanup; folder argument is ignored.")
+            undo_cleanup()
+            return
         moves = plan_moves(args.folder.expanduser().resolve())
         if args.select:
             if not moves:
@@ -98,7 +241,7 @@ def main():
             moves = selected
         if args.apply or args.select:
             apply_moves(moves)
-    except (OSError, ValueError) as error:
+    except (OSError, ValueError, sqlite3.Error) as error:
         parser.exit(1, f"Error: {error}\nStopped; earlier moves, if any, are kept.\n")
     if args.apply or args.select:
         print(f"Applied: {len(moves)} file(s).")
