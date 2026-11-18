@@ -110,6 +110,10 @@ class OrganizerTests(unittest.TestCase):
     def test_remaining_rules_and_cv_word_boundaries(self):
         examples = {
             "Screenshot_2026.png": "Pictures/Screenshots",
+            "2026_screenshot_edit.png": "Pictures/Screenshots",
+            "2026_11_15_16_15_02_screenshot.png": "Pictures/Screenshots",
+            "2026_SCREENSHOT.JPG": "Pictures/Screenshots",
+            "ordinary_photo.png": "Pictures",
             "AME-CV.pdf": "Documents/jobs",
             "my_cv.pdf": "Documents/jobs",
             "activity.pdf": "Documents",

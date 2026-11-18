@@ -78,7 +78,7 @@ Filename matching is case-insensitive. Special rules apply only within their mat
 | File | Destination |
 |---|---|
 | Documents containing `resume` or standalone `cv` in the filename | `~/Documents/jobs/` |
-| Pictures whose filename starts with `screenshot` | `~/Pictures/Screenshots/` |
+| Pictures whose filename contains `screenshot` anywhere (case-insensitive) | `~/Pictures/Screenshots/` |
 | Other documents / pictures | `~/Documents/` / `~/Pictures/` |
 | Audio / videos | `~/Music/` / `~/Videos/` |
 | Archives, apps, and unrecognized file types | Stay where they are |
