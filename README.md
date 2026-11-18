@@ -1,8 +1,7 @@
 # ame-organizer
 
-**Your Downloads folder isn’t a filing system.**
 ![imgalt](https://github.com/zelda19/ame-organizer/blob/main/assets/ame-organizer.png)
-
+**Your Downloads folder isn’t a filing system.**
 Preview the cleanup. Keep both copies. Move files only when you say so.
 
 A small Python command-line tool that routes downloads into your home folders using file extensions and a few filename rules. No dependencies, background service, or AI guessing what your files contain.
