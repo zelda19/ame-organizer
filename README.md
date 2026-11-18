@@ -31,12 +31,45 @@ Requires Python 3 and a filesystem that supports hard links. Tested on Linux wit
    ```bash
    python3 organizer.py ~/Downloads
    ```
-3. Review the paths. To actually move the files:
+3. Choose which files to move with a `y/n` question for each file:
    ```bash
-   python3 organizer.py ~/Downloads --apply
+   python3 organizer.py ~/Downloads --select
    ```
 
 The folder argument is the **source**. Destinations are always under your home directory—not inside the source folder. Preview does not create directories or move files.
+
+## Select files with y/n
+
+```bash
+python3 organizer.py ~/Downloads --select
+```
+
+No numbered choices: review each destination and answer `y` or `n`.
+
+```text
+resume.pdf -> /home/you/Documents/jobs/resume.pdf
+Move this file? [y/N]: y
+photo.jpg -> /home/you/Pictures/photo.jpg
+Move this file? [y/N]: n
+```
+
+| Answer | Result |
+|---|---|
+| `y` or `yes` | Approve this file |
+| `n`, `no`, or Enter | Skip this file |
+| Ctrl+C before moves begin | Cancel the entire selection |
+
+Answers are case-insensitive. **Approved files move only after you finish answering every question.** End-of-input or an invalid answer also cancels without moving anything.
+
+`--select` cannot be combined with `--apply`. Without either option, the command still only previews; `--apply` still moves every matched file.
+
+## Move all matched files
+
+If you want to move everything in the preview without individual questions:
+
+```bash
+python3 organizer.py ~/Downloads --apply
+```
 
 ## Where files go
 
@@ -61,7 +94,7 @@ For example, `my_cv.pdf` matches the jobs rule; `activity.pdf` does not. A resum
 
 ## Safety and limits
 
-- **Preview is the default.** Only `--apply` moves files.
+- **Preview is the default.** `--apply` moves all matched files; `--select` moves only the files you approve with `y` or `yes`.
 - **Duplicates get numbered.** Existing and already-planned filenames are reserved. A collision appearing during apply stops the operation instead of overwriting.
 - **No recursive cleanup.** Subfolders, hidden files, and symbolic links are skipped. Destination directories and their ancestors must not be symbolic links.
 - **Same filesystem only.** Moves use a hard link followed by removing the source name. Cross-filesystem moves and filesystems without hard links are unsupported.
@@ -75,7 +108,7 @@ Each run builds a fresh plan; a later apply can differ from an earlier preview i
 python3 -m unittest -v
 ```
 
-Tests use temporary home and Downloads folders, not your real files. They cover routing, duplicate reservations, preview, apply, changed destinations, symlinks, and skipped files.
+Tests use temporary home and Downloads folders, not your real files. They cover routing, duplicate reservations, preview, apply, selection, cancellation, invalid input, changed destinations, symlinks, and skipped files.
 
 ## Small on purpose
 

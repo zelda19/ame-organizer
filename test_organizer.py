@@ -142,6 +142,84 @@ class OrganizerTests(unittest.TestCase):
     def test_already_in_destination_stays_put(self):
         self.assertEqual(plan_moves(self.home / "Documents", self.home), [])
 
+    def test_select_moves_only_yes_files(self):
+        moves = plan_moves(self.folder, self.home)
+        result = subprocess.run(
+            [sys.executable, str(Path(__file__).with_name("organizer.py")),
+             str(self.folder), "--select"],
+            input=" Y \nn\nyes\nNo\n\n", capture_output=True, text=True, env=self.env,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("ame_resume.pdf ->", result.stdout)
+        self.assertEqual(result.stdout.count("Move this file? [y/N]:"), 5)
+        self.assertIn("Applied: 2 file(s).", result.stdout)
+        for index, (source, destination) in enumerate(moves, 1):
+            if index in (1, 3):
+                self.assertFalse(source.exists())
+                self.assertEqual(destination.read_text(), self.samples[source.name])
+            else:
+                self.assertTrue(source.exists())
+                self.assertFalse(destination.exists())
+
+    def test_select_invalid_input_moves_nothing(self):
+        for answer in ("1\n", "abc\n", "y\ninvalid\n"):
+            with self.subTest(answer=answer):
+                result = subprocess.run(
+                    [sys.executable, str(Path(__file__).with_name("organizer.py")),
+                     str(self.folder), "--select"],
+                    input=answer, capture_output=True, text=True, env=self.env,
+                )
+                self.assertEqual(result.returncode, 1)
+                self.assertIn("Invalid answer", result.stderr)
+                for name, content in self.samples.items():
+                    self.assertEqual((self.folder / name).read_text(), content)
+                self.assertFalse((self.home / "Documents/jobs").exists())
+
+    def test_select_cancel_or_end_of_input_moves_nothing(self):
+        for answer in ("", "y\n"):
+            with self.subTest(answer=answer):
+                result = subprocess.run(
+                    [sys.executable, str(Path(__file__).with_name("organizer.py")),
+                     str(self.folder), "--select"],
+                    input=answer, capture_output=True, text=True, env=self.env,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn("Cancelled. Nothing changed.", result.stdout)
+                self.assertEqual(len(plan_moves(self.folder, self.home)), 5)
+
+    def test_select_no_or_enter_skips_every_file(self):
+        result = subprocess.run(
+            [sys.executable, str(Path(__file__).with_name("organizer.py")),
+             str(self.folder), "--select"],
+            input="n\nno\n\nN\n\n", capture_output=True, text=True, env=self.env,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Applied: 0 file(s).", result.stdout)
+        for name, content in self.samples.items():
+            self.assertEqual((self.folder / name).read_text(), content)
+        self.assertFalse((self.home / "Documents/jobs").exists())
+
+    def test_select_cannot_combine_with_apply(self):
+        result = subprocess.run(
+            [sys.executable, str(Path(__file__).with_name("organizer.py")),
+             str(self.folder), "--select", "--apply"],
+            input="y\n", capture_output=True, text=True, env=self.env,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(len(plan_moves(self.folder, self.home)), 5)
+
+    def test_select_empty_folder_does_not_prompt(self):
+        empty = self.home / "empty"
+        empty.mkdir()
+        result = subprocess.run(
+            [sys.executable, str(Path(__file__).with_name("organizer.py")),
+             str(empty), "--select"],
+            input="", capture_output=True, text=True, env=self.env,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("No files to organize.", result.stdout)
+        self.assertNotIn("Move this file?", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()

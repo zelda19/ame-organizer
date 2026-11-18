@@ -72,15 +72,35 @@ def apply_moves(moves):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("folder", type=Path, help="Source folder; sort into home folders (not recursive)")
-    parser.add_argument("--apply", action="store_true", help="Move files instead of previewing")
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--apply", action="store_true", help="Move all matched files")
+    mode.add_argument("--select", action="store_true", help="Approve each file with y/n before moving")
     args = parser.parse_args()
     try:
         moves = plan_moves(args.folder.expanduser().resolve())
-        if args.apply:
+        if args.select:
+            if not moves:
+                print("No files to organize.")
+                return
+            selected = []
+            print("Answer for each file; approved files move after all questions.")
+            try:
+                for source, destination in moves:
+                    print(f"{source.name} -> {destination}")
+                    answer = input("Move this file? [y/N]: ").strip().lower()
+                    if answer in ("y", "yes"):
+                        selected.append((source, destination))
+                    elif answer not in ("", "n", "no"):
+                        raise ValueError("Invalid answer. Use y or n. Nothing changed.")
+            except (EOFError, KeyboardInterrupt):
+                print("\nCancelled. Nothing changed.")
+                return
+            moves = selected
+        if args.apply or args.select:
             apply_moves(moves)
     except (OSError, ValueError) as error:
         parser.exit(1, f"Error: {error}\nStopped; earlier moves, if any, are kept.\n")
-    if args.apply:
+    if args.apply or args.select:
         print(f"Applied: {len(moves)} file(s).")
         return
     for source, destination in moves:
