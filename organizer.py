@@ -64,8 +64,6 @@ def apply_moves(moves):
             raise ValueError(f"Source is no longer a regular file: {source}")
         check_directory(destination.parent)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        # Linking fails on collisions instead of silently replacing a file.
-        # shortcut: requires same-filesystem hard links; add copying if needed.
         os.link(source, destination, follow_symlinks=False)
         source.unlink()
         print(f"Moved: {source.name} -> {destination}")
