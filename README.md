@@ -1,10 +1,12 @@
 # ame-organizer
 
-<p align="center">
-  <img src="assets/ame-profile.png" alt="ame-organizer mascot" width="200">
-</p>
+<img align="left" src="assets/ame-profile.png" alt="ame-organizer mascot" width="150">
 
-<p align="center"><b>Your Downloads folder isn't a filing system.</b></p>
+<h3>Your Downloads folder isn't a filing system.</h3>
+
+Sort your downloads into the right home folders. Preview first, choose with <code>y/n</code>, and undo a cleanup if needed.
+
+<br clear="left">
 
 Sort your downloads into the right home folders. Preview first, choose with `y/n`, and undo a cleanup if needed.
 
