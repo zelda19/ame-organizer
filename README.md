@@ -1,17 +1,19 @@
 # ame-organizer
 
+<div align="center">
 <table>
   <tr>
     <td width="200">
       <img src="assets/ame-profile.png" alt="ame-organizer mascot" width="200">
     </td>
-    <td>
+    <td valign="middle" align="left">
       <h3>Your Downloads folder isn't a filing system.</h3>
       Sort your downloads into the right home folders.<br>
       Preview first, choose with <code>y/n</code>, and undo a cleanup if needed.
     </td>
   </tr>
 </table>
+</div>
 
 ## Get started
 
