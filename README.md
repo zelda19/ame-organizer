@@ -1,8 +1,8 @@
 # ame-organizer
 
-![ame-organizer](assets/ame-organizer.png)
 
-**Your Downloads folder isn’t a filing system.**
+
+**Your Downloads folder isn’t a filing system.** ![ame-organizer](https://github.com/zelda19/ame-organizer/blob/main/assets/ame%20profile.jpg)
 
 Sort your downloads into the right home folders. Preview first, choose with `y/n`, and undo a cleanup if needed.
 
@@ -18,7 +18,7 @@ cd ame-organizer
 ## Use it
 
 Run these from the project folder:
-
+![ame-organizer](assets/ame-organizer.png)
 ```bash
 python3 organizer.py ~/Downloads           # Preview only
 python3 organizer.py ~/Downloads --select  # Choose files with y/n
