@@ -4,9 +4,8 @@
 
 <h3>Your Downloads folder isn't a filing system.</h3>
 
-Sort your downloads into the right home folders. Preview first, choose with <code>y/n</code>, and undo a cleanup if needed.
 
-<br clear="left">
+<br clear="left">git 
 
 Sort your downloads into the right home folders. Preview first, choose with `y/n`, and undo a cleanup if needed.
 
