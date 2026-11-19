@@ -68,10 +68,4 @@ Names are matched without regard to capitalization. Routing uses filenames and e
 - **One run at a time:** don't edit the files while a cleanup or undo is running.
 - **If interrupted:** completed moves stay completed, and `--undo` can recover recorded ones. Real power-loss recovery has not been verified.
 
-## Run the tests
-
-```bash
-python3 -m unittest -v
-```
-
 Tests use temporary folders, not your personal files.
