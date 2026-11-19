@@ -1,13 +1,17 @@
 # ame-organizer
 
-<img align="left" src="assets/ame-profile.png" alt="ame-organizer mascot" width="150">
-
-<h3>Your Downloads folder isn't a filing system.</h3>
-
-
-<br clear="left">git 
-
-Sort your downloads into the right home folders. Preview first, choose with `y/n`, and undo a cleanup if needed.
+<table>
+  <tr>
+    <td width="200">
+      <img src="assets/ame-profile.png" alt="ame-organizer mascot" width="200">
+    </td>
+    <td>
+      <h3>Your Downloads folder isn't a filing system.</h3>
+      Sort your downloads into the right home folders.<br>
+      Preview first, choose with <code>y/n</code>, and undo a cleanup if needed.
+    </td>
+  </tr>
+</table>
 
 ## Get started
 
