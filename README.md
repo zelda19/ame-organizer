@@ -1,7 +1,7 @@
 # ame-organizer
 
 <p align="center">
-  <img src="assets/ame%20profile.jpg" alt="ame-organizer mascot" width="200">
+  <img src="assets/ame-profile.png" alt="ame-organizer mascot" width="200">
 </p>
 
 <p align="center"><b>Your Downloads folder isn't a filing system.</b></p>
