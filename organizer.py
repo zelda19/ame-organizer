@@ -138,7 +138,6 @@ def apply_moves(moves, home=None):
                 history.commit()
                 raise
             destination_signature = file_signature(destination)
-            # Both names share content; check the source identity without hashing it again.
             info = source.lstat()
             source_metadata = (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns)
             if destination_signature != signature or source_metadata != signature[:4]:
@@ -202,7 +201,6 @@ def undo_cleanup():
         if answer not in ("y", "yes"):
             print("Cancelled. Nothing changed.")
             return
-        # Recheck after confirmation; every entry must be safe before restoration starts.
         undo_plan(entries)
         for entry in entries:
             entry_id, source, destination, action = undo_plan([entry])[0]
